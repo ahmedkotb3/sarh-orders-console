@@ -29,7 +29,7 @@ A deliberately small full-stack order operations console. React + TypeScript/Vit
 
 4. Open `http://localhost:5173`. API is at `http://localhost:4000`.
 
-The seed script creates 50,000 orders, 1–5 line items per order, one admin, and one agent. It is deterministic enough for repeatable local development; re-running it clears and recreates demo data.
+The seed script creates 50,000 orders, 1–5 line items per order, one admin, and one agent. It also creates matching idempotency-ledger entries. It is deterministic enough for repeatable local development; re-running it clears and recreates demo data, including the ledger.
 
 ### Demo accounts
 

@@ -13,6 +13,7 @@ const statuses: OrderStatus[] = [OrderStatus.PENDING, OrderStatus.PROCESSING, Or
 
 async function main() {
   console.log("Clearing demo records...");
+  await prisma.orderIdempotency.deleteMany();
   await prisma.orderItem.deleteMany();
   await prisma.order.deleteMany();
   await prisma.user.deleteMany();
@@ -43,6 +44,7 @@ async function main() {
       const customerEmail = `${customer.toLowerCase().replace(/[^a-z]+/g, ".")}.${i}@example.test`;
       const createdAt = new Date(now - ((i * 7919) % (365 * 24 * 60 * 60 * 1000)));
       data.push({
+        id: `seed-order-${i}`,
         idempotencyKey: `seed-order-${i}`,
         payloadHash: `seed-${i}`,
         customerName: customer,
@@ -53,7 +55,16 @@ async function main() {
         items: { create: items.map(item => ({ ...item, unitPrice: new Prisma.Decimal(item.unitPrice.toFixed(2)) })) }
       });
     }
-    await prisma.$transaction(data.map(order => prisma.order.create({ data: order })));
+    await prisma.$transaction([
+      ...data.map(order => prisma.order.create({ data: order })),
+      prisma.orderIdempotency.createMany({
+        data: data.map(order => ({
+          key: order.idempotencyKey,
+          payloadHash: order.payloadHash,
+          orderId: order.id
+        }))
+      })
+    ]);
     if (end % 5000 === 0) console.log(`  ${end.toLocaleString()} / ${totalOrders.toLocaleString()}`);
   }
   console.log("Seed complete. Admin: admin@sarh.local / AdminPass123! | Agent: agent@sarh.local / AgentPass123!");

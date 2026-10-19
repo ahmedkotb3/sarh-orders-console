@@ -16,7 +16,7 @@ A deliberately small full-stack order operations console. React + TypeScript/Vit
    CREATE DATABASE sarh_orders;
    ```
 
-2. Copy `server/.env.example` to `server/.env` (the root `.env.example` is also provided for reference) and set `DATABASE_URL` and a random `JWT_SECRET` of at least 32 characters. Prisma and the server run from the `server/` workspace, so the workspace-local env file is loaded automatically.
+2. Copy `server/.env.example` to `server/.env` (the root `.env.example` is also provided for reference), set `DATABASE_URL`, and generate a random `JWT_SECRET` of at least 32 characters (for example, `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"`). The server rejects the blank or known example placeholder. Prisma and the server run from the `server/` workspace, so the workspace-local env file is loaded automatically.
 3. Install and initialize:
 
    ```bash
@@ -79,19 +79,22 @@ The test sends two concurrent create requests with the same key and verifies tha
 
 Problems found and fixes:
 
-1. **Hard-coded JWT secret** — moved to `JWT_SECRET` environment configuration and fail-fast validation.
-2. **`jwt.decode()` trusts unsigned claims** — replaced with `jwt.verify()` and explicit algorithm, issuer, audience, and expiration validation.
-3. **Query-string token fallback** — removed; tokens are accepted only from the `Authorization: Bearer` header to reduce exposure through logs, browser history, and referrers.
-4. **Admin authorization only in React** — added backend `requireRole("admin")`; UI visibility is not a security boundary.
-5. **Plaintext password lookup** — passwords are stored as bcrypt hashes and verified with `bcrypt.compare`.
-6. **No token lifetime / claim discipline** — tokens expire after 15 minutes and the subject is reloaded from the database so a stale or forged role claim cannot grant privileges.
-7. **No robust request validation** — Zod validates login and order input; unknown or malformed values are rejected.
-8. **Uncaught route/database errors** — centralized error middleware returns safe messages without exposing SQL details.
-9. **No throttling on login** — this exercise does not implement persistent rate limiting; production should add rate limiting and monitoring at the API edge.
+1. **Hard-coded JWT secret** — the secret now comes from `JWT_SECRET`; startup fails if it is missing or shorter than 32 characters.
+2. **`jwt.decode()` trusts unsigned claims** — tokens are verified with HS256 and the configured issuer and audience. Required subject, role, and expiration claims are checked.
+3. **No token expiration** — access tokens expire after 15 minutes.
+4. **Query-string token fallback** — removed; only `Authorization: Bearer` is accepted, avoiding token exposure through URLs, logs, browser history, and referrers.
+5. **Authorization only in the React UI** — destructive order deletion now requires the `admin` role on the server; hiding a button is not an authorization boundary.
+6. **Plaintext password comparison/storage** — user passwords are stored as bcrypt hashes and checked with `bcrypt.compare`.
+7. **Trusting the role in token claims** — middleware reloads the user and current role from the database for each authenticated request, so an old role claim cannot preserve revoked access.
+8. **Malformed login/order inputs accepted without validation** — Zod schemas validate these payloads before database operations.
+9. **Authentication failures mixed with server failures** — invalid tokens return `401`, while database lookup errors reach the centralized error handler instead of being mislabeled as bad credentials.
+10. **Known example secret passed the length check** — the placeholder has been removed from `.env.example` and is explicitly rejected if retained in an existing `.env`.
+
+The seed creates both `admin@sarh.local` and `agent@sarh.local` accounts with bcrypt-hashed passwords.
 
 ### Token storage (2–3 sentences)
 
-This demo stores the access token in `sessionStorage`, not in a URL or long-lived `localStorage`, so it survives a page refresh in the same tab but is scoped to that tab session. It does **not** prevent XSS from reading the token while the page is running, nor does it protect against a compromised device; closing the tab ends the session storage lifetime. A production alternative is a short-lived access token in a Secure, HttpOnly, SameSite cookie with appropriate CSRF defenses, depending on the deployment and threat model.
+This demo stores the access token in `sessionStorage`, which persists across refreshes in the same tab and is cleared when that tab session ends. Because the app sends it explicitly in an Authorization header rather than having the browser attach it automatically, this reduces CSRF risk, but it does not protect against XSS, which can read the token.
 
 ## Product question: “Delete all cancelled orders”
 
